@@ -1,0 +1,21 @@
+model:
+  name: "answerdotai/ModernBERT-base"
+  max_length: 512
+  batch_size: 4
+  freeze_embeddings: true
+
+training:
+  learning_rate: 2e-5
+  num_epochs: 10
+  train_batch_size: 4
+  eval_batch_size: 8
+  weight_decay: 0.01
+  warmup_steps: 500
+
+data:
+  file_path: "data/transcripts.xlsx"
+  train_split: 0.8
+  seed: 53
+  embeddings_path: "data/embeddings"
+  finetune_dataset: "craig/prosus-converted"  # Sales calls dataset
+  finetune_subset: "train"
