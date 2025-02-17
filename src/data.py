@@ -1,6 +1,12 @@
+import multiprocessing
 import polars as pl
 
-from datasets import Dataset
+from presidio_analyzer import AnalyzerEngine
+from presidio_anonymizer import AnonymizerEngine
+from presidio_anonymizer.entities import OperatorConfig
+
+
+from datasets import Dataset, DatasetDict
 from typing import Dict, Optional
 
 
@@ -70,3 +76,64 @@ class DatasetConverter:
             return {"train": split_dataset["train"], "test": split_dataset["test"]}
 
         return {"train": dataset}
+
+
+class DatasetAnonymizer:
+    def __init__(self):
+        self.analyzer = AnalyzerEngine()
+        self.anonymizer = AnonymizerEngine()
+
+    def _clean_text(self, text: str) -> str:
+        analyzer_results = self.analyzer.analyze(
+            text=text,
+            language="en",
+            entities=["PERSON", "ORGANIZATION", "LOCATION"],
+        )
+        operators = {
+            "PERSON": OperatorConfig("replace", {"new_value": "<person>"}),
+            "ORGANIZATION": OperatorConfig("replace", {"new_value": "<org>"}),
+            "LOCATION": OperatorConfig("replace", {"new_value": "<location>"}),
+        }
+        anonymized_text = self.anonymizer.anonymize(
+            text=text, analyzer_results=analyzer_results, operators=operators
+        )
+        return anonymized_text.text.lower()
+
+    def process_split(
+        self,
+        split_data: Dataset,
+        text_column: str,
+        batch_size: int = 1000,
+    ) -> Dataset:
+        num_proc = max(1, multiprocessing.cpu_count() - 1)
+
+        def process_batch(examples):
+            return {
+                text_column: [self._clean_text(text) for text in examples[text_column]]
+            }
+
+        return split_data.map(
+            process_batch,
+            batched=True,
+            batch_size=batch_size,
+            num_proc=num_proc,
+            desc="Anonymizing data",
+        )
+
+    def anonymize_dataset(
+        self,
+        data: dict,
+        text_column: str,
+        batch_size: int = 100,
+        num_proc: int = None,
+    ):
+        anonymized_splits = {}
+        for split_name, split_data in data.items():
+            anonymized_splits[split_name] = self.process_split(
+                split_data=split_data,
+                text_column=text_column,
+                batch_size=batch_size,
+                num_proc=num_proc,
+            )
+
+        return DatasetDict(anonymized_splits)

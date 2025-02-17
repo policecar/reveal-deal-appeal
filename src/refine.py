@@ -16,16 +16,22 @@ Training happens in two phases:
 
 See also:
 - https://huggingface.co/docs/setfit/en/conceptual_guides/setfit
+
+
+Teuxdeux:
+- clean text: anonymize, lower case
+- augment text (e.g., with nlpaug)
+- add a bottleneck between embedding and classifier
 """
 
 import numpy as np
 
-from setfit import SetFitModel, Trainer, TrainingArguments
-
 from sentence_transformers.losses import CosineSimilarityLoss
+from setfit import SetFitModel, Trainer, TrainingArguments
+from sklearn.metrics import classification_report
 
 from config import Config
-from data import DatasetConverter
+from data import DatasetConverter, DatasetAnonymizer
 from plot import plot_embeddings_umap
 
 
@@ -40,6 +46,15 @@ if __name__ == "__main__":
     converter = DatasetConverter(config.data.file_path, config.data.seed)
     data = converter.to_dataset(train_split=0.8, shuffle=True)
 
+    anonymizer = DatasetAnonymizer()
+    data = anonymizer.anonymize_dataset(data, text_column="text")
+
+    # # save anonymized data
+    # data.save_to_disk("data/humanon")
+
+    # from datasets import load_from_disk
+    # data = load_from_disk("data/humanon")
+
     train_data = data["train"]
     test_data = data["test"]
 
@@ -47,7 +62,7 @@ if __name__ == "__main__":
     # from setfit import sample_dataset
     # train_data = sample_dataset(train_data, label_column="label", num_samples=8)
 
-    # breakpoint()
+    breakpoint()
 
     if train:
         # MODEL
@@ -75,8 +90,9 @@ if __name__ == "__main__":
         args = TrainingArguments(
             batch_size=8,  # (16, 2)
             # num_epochs=3,  # (1, 16)
+            max_steps=100,
             # end_to_end=False,  # freeze body, train head
-            l2_weight=0.01,
+            l2_weight=0.1,  # 0.01
             sampling_strategy="undersampling",
             num_iterations=2,
             loss=CosineSimilarityLoss,  # default, consider FocalLoss
@@ -101,16 +117,15 @@ if __name__ == "__main__":
 
     # EVALUATION
 
-    test_labels = np.array(test_data["label"])
     train_labels = np.array(train_data["label"])
+    test_labels = np.array(test_data["label"])
 
-    # y_pred = model.predict(test_data["text"]).cpu().numpy()
+    y_pred = model.predict(test_data["text"]).cpu().numpy()
 
-    # from sklearn.metrics import classification_report
-    # performance = classification_report(
-    #     test_labels, y_pred, target_names=["Win", "No-Win"], digits=3
-    # )
-    # print(f"\n{performance}")
+    performance = classification_report(
+        test_labels, y_pred, target_names=["Win", "No-Win"], digits=3
+    )
+    print(f"\n{performance}")
 
     # from sklearn.metrics import fbeta_score
     # # F2 score (weighs recall higher)
