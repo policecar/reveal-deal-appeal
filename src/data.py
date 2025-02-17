@@ -21,6 +21,7 @@ class DatasetConverter:
             (pl.col(self.text_col).is_not_null())
             & (pl.col(self.text_col) != "")
             & (pl.col(self.text_col) != "null")
+            & (pl.col(self.text_col).str.len_chars() >= 100)
         )
         self.df = self.df.filter(
             (pl.col(self.label_col).is_not_null())
@@ -33,7 +34,9 @@ class DatasetConverter:
         """Create binary labels based on label column."""
         return [0 if dc == "No" else 1 for dc in self.df[self.label_col].to_list()]
 
-    def to_dataset(self, train_split: Optional[float] = None) -> Dict[str, Dataset]:
+    def to_dataset(
+        self, train_split: Optional[float] = None, shuffle: bool = True
+    ) -> Dict[str, Dataset]:
         """
         Convert Polars DataFrame to HuggingFace Dataset format.
 
@@ -48,9 +51,11 @@ class DatasetConverter:
         # Prepare data
         texts = self.df["Transcription"].to_list()
         labels = self._create_labels()
+        # Add original indices to the dataset
+        original_indices = pl.arange(0, len(self.df), eager=True).to_list()
 
         # Create dataset dictionary
-        dataset_dict = {"text": texts, "label": labels}
+        dataset_dict = {"text": texts, "label": labels, "index": original_indices}
 
         # Convert to HuggingFace Dataset
         dataset = Dataset.from_dict(dataset_dict)
@@ -58,7 +63,9 @@ class DatasetConverter:
         if train_split is not None:
             # Split into train/test
             split_dataset = dataset.train_test_split(
-                train_size=train_split, seed=self.seed
+                train_size=train_split,
+                seed=self.seed,
+                shuffle=shuffle,
             )
             return {"train": split_dataset["train"], "test": split_dataset["test"]}
 

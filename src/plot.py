@@ -40,7 +40,7 @@ def plot_umap(
     plt.show()
 
 
-def plot_embeddings_umap(embeddings, labels):
+def plot_embeddings_umap(embeddings, labels, idxs=None):
     """
     Plot embeddings using Uniform Manifold Approximation and Projection.
 
@@ -71,11 +71,13 @@ def plot_embeddings_umap(embeddings, labels):
         cmap="RdYlGn",
         alpha=0.7,
         s=123,  # dot size
+        vmin=0,
+        vmax=1,
     )
 
-    # Add index labels to points
-    for idx, (x, y, z) in enumerate(projection):
-        ax.text(x, y, z, str(idx), fontsize=8)
+    if idxs is not None:  # Add index labels to points
+        for i, (x, y, z) in enumerate(projection):
+            ax.text(x, y, z, idxs[i], fontsize=8)
 
     plt.colorbar(scatter)
     plt.tight_layout()

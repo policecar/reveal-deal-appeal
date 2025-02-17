@@ -15,7 +15,7 @@ training:
 data:
   file_path: "data/transcripts.xlsx"
   train_split: 0.8
-  seed: 53
+  seed: 153
   embeddings_path: "data/embeddings"
   finetune_dataset: "craig/prosus-converted"  # Sales calls dataset
   finetune_subset: "train"

@@ -6,6 +6,7 @@ numpy==2.2.3
 polars==1.22.0
 pre-commit==4.1.0
 pyside6==6.8.2.1
+pytest==8.3.4
 ruff==0.9.6
 scikit-learn==1.6.1
 setfit==1.1.1
