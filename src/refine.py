@@ -43,8 +43,9 @@ if __name__ == "__main__":
     model_name = "sentence-transformers/all-mpnet-base-v2"
     # model_name = "BAAI/bge-small-en-v1.5"
 
-    ckpt_dir = Path("..") / "checkpoints"
-    data_dir = Path("..") / "data"
+    script_dir = Path(__file__).parent.absolute()
+    ckpt_dir = script_dir.parent / "checkpoints"
+    data_dir = script_dir.parent / "data"
 
     # DATA
 
