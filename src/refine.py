@@ -19,13 +19,13 @@ See also:
 
 
 Teuxdeux:
-- clean text: anonymize, lower case
 - augment text (e.g., with nlpaug)
 - add a bottleneck between embedding and classifier
 """
 
 import numpy as np
 
+from pathlib import Path
 from sentence_transformers.losses import CosineSimilarityLoss
 from setfit import SetFitModel, Trainer, TrainingArguments
 from sklearn.metrics import classification_report
@@ -33,27 +33,37 @@ from sklearn.metrics import classification_report
 from config import Config
 from data import DatasetConverter, DatasetAnonymizer
 from plot import plot_embeddings_umap
-
+# from utils import estimate_tokens
 
 if __name__ == "__main__":
+    preprocess_data = True
+    train = True
+
     config = Config.from_yaml("src/config.yaml")
     model_name = "sentence-transformers/all-mpnet-base-v2"
     # model_name = "BAAI/bge-small-en-v1.5"
-    train = True
+
+    ckpt_dir = Path("..") / "checkpoints"
+    data_dir = Path("..") / "data"
 
     # DATA
 
-    converter = DatasetConverter(config.data.file_path, config.data.seed)
-    data = converter.to_dataset(train_split=0.8, shuffle=True)
+    if preprocess_data:
+        converter = DatasetConverter(config.data)
+        data = converter.to_dataset(
+            config.data.train_split, shuffle=config.data.shuffle
+        )
 
-    anonymizer = DatasetAnonymizer()
-    data = anonymizer.anonymize_dataset(data, text_column="text")
+        anonymizer = DatasetAnonymizer()
+        data = anonymizer.anonymize_dataset(data, text_column="text")
 
-    # # save anonymized data
-    # data.save_to_disk("data/humanon")
+        # save data
+        data.save_to_disk(data_dir / "mauzo")
+    else:
+        # load preprocessed data
+        from datasets import load_from_disk
 
-    # from datasets import load_from_disk
-    # data = load_from_disk("data/humanon")
+        data = load_from_disk(data_dir / "mauzo")
 
     train_data = data["train"]
     test_data = data["test"]
@@ -106,13 +116,15 @@ if __name__ == "__main__":
         )
         trainer.train()
 
-        model.save_pretrained(f"{model_name.split('/')[-1]}_setfit")
+        model.save_pretrained(ckpt_dir / f"{model_name.split('/')[-1]}_setfit")
 
         metrics = trainer.evaluate(test_data)
         print(metrics)
 
     else:
-        model = SetFitModel.from_pretrained(f"{model_name.split('/')[-1]}_setfit")
+        model = SetFitModel.from_pretrained(
+            ckpt_dir / f"{model_name.split('/')[-1]}_setfit"
+        )
         # model = SetFitModel.from_pretrained(model_name)
 
     # EVALUATION
@@ -134,11 +146,12 @@ if __name__ == "__main__":
 
     # VISUALIZATION
 
-    test_embeddings = model.model_body.encode(test_data["text"])
-    plot_embeddings_umap(test_embeddings, test_labels, idxs=test_data["index"])
-
+    # Embed data, run UMAP, then plot the projected embeddings
     train_embeddings = model.model_body.encode(train_data["text"])
     plot_embeddings_umap(train_embeddings, train_labels, idxs=train_data["index"])
+
+    test_embeddings = model.model_body.encode(test_data["text"])
+    plot_embeddings_umap(test_embeddings, test_labels, idxs=test_data["index"])
 
     # embeddings = np.vstack([train_embeddings, test_embeddings])
     # labels = np.concatenate([train_labels, test_labels])

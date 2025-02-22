@@ -24,12 +24,16 @@ class TrainingConfig:
 
 @dataclass
 class DataConfig:
-    embeddings_path: str
     file_path: str
+    excel_sheet_name: str
+    excel_text_col: str
+    excel_label_col: str
+    embeddings_path: str
     finetune_dataset: str
     finetune_subset: Optional[str]
     train_split: float
     seed: int
+    shuffle: bool
 
 
 @dataclass

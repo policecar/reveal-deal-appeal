@@ -5,23 +5,21 @@ from presidio_analyzer import AnalyzerEngine
 from presidio_anonymizer import AnonymizerEngine
 from presidio_anonymizer.entities import OperatorConfig
 
-
+from config import Config
 from datasets import Dataset, DatasetDict
 from typing import Dict, Optional
 
 
 class DatasetConverter:
-    def __init__(self, file_path: str, seed: int = 53):
+    def __init__(self, config: Config):
         """Initialize from an excel file containing transcripts of sales calls."""
-        self.sheet_name = "discovery calls"
-        self.text_col = "Transcription"
-        self.label_col = "Win/ No Win"
-
-        self.seed = seed
+        self.seed = config.seed
+        self.text_col = config.excel_text_col
+        self.label_col = config.excel_label_col
 
         self.df = pl.read_excel(
-            file_path,
-            sheet_name=self.sheet_name,
+            config.file_path,
+            sheet_name=config.excel_sheet_name,
         )
         self.df = self.df.filter(
             (pl.col(self.text_col).is_not_null())
@@ -125,7 +123,6 @@ class DatasetAnonymizer:
         data: dict,
         text_column: str,
         batch_size: int = 100,
-        num_proc: int = None,
     ):
         anonymized_splits = {}
         for split_name, split_data in data.items():
@@ -133,7 +130,6 @@ class DatasetAnonymizer:
                 split_data=split_data,
                 text_column=text_column,
                 batch_size=batch_size,
-                num_proc=num_proc,
             )
 
         return DatasetDict(anonymized_splits)
