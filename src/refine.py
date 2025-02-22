@@ -24,24 +24,36 @@ Teuxdeux:
 """
 
 import numpy as np
+import torch
 
 from pathlib import Path
+from sentence_transformers import SentenceTransformer
 from sentence_transformers.losses import CosineSimilarityLoss
 from setfit import SetFitModel, Trainer, TrainingArguments
 from sklearn.metrics import classification_report
 
 from config import Config
+from clf import BottleneckClassifier
 from data import DatasetConverter, DatasetAnonymizer
 from plot import plot_embeddings_umap
 # from utils import estimate_tokens
 
+
 if __name__ == "__main__":
-    preprocess_data = True
+    preprocess_data = False
     train = True
 
     config = Config.from_yaml("src/config.yaml")
     model_name = "sentence-transformers/all-mpnet-base-v2"
     # model_name = "BAAI/bge-small-en-v1.5"
+
+    device = torch.device(
+        "cuda"
+        if torch.cuda.is_available()
+        else "mps"
+        if torch.backends.mps.is_available()
+        else "cpu"
+    )
 
     script_dir = Path(__file__).parent.absolute()
     ckpt_dir = script_dir.parent / "checkpoints"
@@ -73,27 +85,25 @@ if __name__ == "__main__":
     # from setfit import sample_dataset
     # train_data = sample_dataset(train_data, label_column="label", num_samples=8)
 
-    breakpoint()
-
     if train:
         # MODEL
 
-        # from sentence_transformers import SentenceTransformer
         # from sklearn.linear_model import LogisticRegression
         # clf = LogisticRegression(
         #     class_weight="balanced",
         #     # max_iter=1000,
         #     # solver="liblinear",
         # )
-        # model = SetFitModel(
-        #     model_body=SentenceTransformer(model_name),
-        #     model_head=clf
-        # )
 
-        model = SetFitModel.from_pretrained(
-            model_name,
+        clf = BottleneckClassifier(
+            bottleneck_dim=config.model.bottleneck_dim,
+            out_features=len(train_data["label"]),
+            device=device,
+        )
+        model = SetFitModel(
+            model_body=SentenceTransformer(model_name),
+            model_head=clf,
             use_differentiable_head=True,
-            head_params={"out_features": len(train_data["label"])},
         )
 
         # TRAINING

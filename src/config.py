@@ -10,6 +10,7 @@ class ModelConfig:
     max_length: int
     batch_size: int
     freeze_embeddings: bool
+    bottleneck_dim: int
 
 
 @dataclass
