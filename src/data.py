@@ -7,7 +7,7 @@ from presidio_anonymizer import AnonymizerEngine
 from presidio_anonymizer.entities import OperatorConfig
 
 from config import Config
-from datasets import Dataset, DatasetDict
+from datasets import Dataset, DatasetDict, ClassLabel
 from typing import Dict, Optional
 
 
@@ -22,6 +22,7 @@ class DatasetConverter:
             config.file_path,
             sheet_name=config.excel_sheet_name,
         )
+
         # Store original indices and dates before any filtering
         original_indices = set(self.df.index)
         dates_dict = self.df["Date"].to_dict()
@@ -113,12 +114,17 @@ class DatasetConverter:
         # Convert to HuggingFace Dataset
         dataset = Dataset.from_dict(dataset_dict)
 
+        dataset = dataset.cast_column(
+            "label", ClassLabel(names=[str(label) for label in dataset.unique("label")])
+        )
+
         if train_split is not None:
             # Split into train/test
             split_dataset = dataset.train_test_split(
                 train_size=train_split,
                 seed=self.seed,
                 shuffle=shuffle,
+                stratify_by_column="label",
             )
             return {"train": split_dataset["train"], "test": split_dataset["test"]}
 
