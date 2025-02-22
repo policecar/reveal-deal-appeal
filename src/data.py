@@ -56,7 +56,10 @@ class DatasetConverter:
         return self
 
     def _filter_length_outliers(self, z_threshold: float = 2.0) -> "DatasetConverter":
-        """Filter out outliers based on text length statistics."""
+        """
+        Filter outliers that deviate by more than two standard deviations
+        regarding their number of characters or tokens.
+        """
         # Add character and token count columns
         self.df["char_count"] = self.df[self.text_col].str.len()
         self.df["token_count"] = self.df[self.text_col].str.split().str.len()
