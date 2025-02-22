@@ -1,5 +1,6 @@
 import multiprocessing
-import polars as pl
+import numpy as np
+import pandas as pd
 
 from presidio_analyzer import AnalyzerEngine
 from presidio_anonymizer import AnonymizerEngine
@@ -17,32 +18,78 @@ class DatasetConverter:
         self.text_col = config.excel_text_col
         self.label_col = config.excel_label_col
 
-        self.df = pl.read_excel(
+        self.df = pd.read_excel(
             config.file_path,
             sheet_name=config.excel_sheet_name,
         )
-        self.df = self.df.filter(
-            (pl.col(self.text_col).is_not_null())
-            & (pl.col(self.text_col) != "")
-            & (pl.col(self.text_col) != "null")
-            & (pl.col(self.text_col).str.len_chars() >= 100)
-        )
-        self.df = self.df.filter(
-            (pl.col(self.label_col).is_not_null())
-            & (pl.col(self.label_col) != "")
-            & (pl.col(self.label_col) != "null")
-        )
-        print(self.df.get_column(self.label_col).value_counts())
+        # Store original indices and dates before any filtering
+        original_indices = set(self.df.index)
+        dates_dict = self.df["Date"].to_dict()
 
-    def _create_labels(self) -> list:
-        """Create binary labels based on label column."""
-        return [0 if dc == "No" else 1 for dc in self.df[self.label_col].to_list()]
+        (self._apply_basic_filters()._filter_length_outliers())
+
+        # Print skipped indices using stored dates
+        skipped_indices = list(original_indices - set(self.df.index))
+        if skipped_indices:
+            # Find the width needed for the largest index
+            max_idx_width = len(str(max(skipped_indices)))
+            print("\nSkipped rows (index, date):")
+            for idx in sorted(skipped_indices):
+                date_str = dates_dict[idx].strftime("%Y-%m-%d")
+                print(f"{idx:>{max_idx_width}}: {date_str}")
+
+        # Reset index and store original indices in a column
+        self.df = self.df.reset_index(names=["original_index"])
+
+        print(self.df[self.label_col].value_counts())
+
+    def _apply_basic_filters(self) -> "DatasetConverter":
+        """Apply basic null and length filters."""
+        self.df = self.df[
+            (self.df[self.text_col].notna())
+            & (self.df[self.text_col] != "")
+            & (self.df[self.text_col] != "null")
+            & (self.df[self.label_col].notna())
+            & (self.df[self.label_col] != "")
+            & (self.df[self.label_col] != "null")
+        ].copy()
+        return self
+
+    def _filter_length_outliers(self, z_threshold: float = 2.0) -> "DatasetConverter":
+        """Filter out outliers based on text length statistics."""
+        # Add character and token count columns
+        self.df["char_count"] = self.df[self.text_col].str.len()
+        self.df["token_count"] = self.df[self.text_col].str.split().str.len()
+
+        # Calculate z-scores
+        char_zscore = np.abs(
+            (self.df["char_count"] - self.df["char_count"].mean())
+            / self.df["char_count"].std()
+        )
+        token_zscore = np.abs(
+            (self.df["token_count"] - self.df["token_count"].mean())
+            / self.df["token_count"].std()
+        )
+
+        print(
+            f"\nCharacter count mean: {self.df['char_count'].mean():.1f}, std: {self.df['char_count'].std():.1f}"
+        )
+        print(
+            f"Token count mean: {self.df['token_count'].mean():.1f}, std: {self.df['token_count'].std():.1f}"
+        )
+
+        # Apply filters
+        self.df = self.df[
+            (char_zscore <= z_threshold) & (token_zscore <= z_threshold)
+        ].drop(columns=["char_count", "token_count"])
+
+        return self
 
     def to_dataset(
         self, train_split: Optional[float] = None, shuffle: bool = True
     ) -> Dict[str, Dataset]:
         """
-        Convert Polars DataFrame to HuggingFace Dataset format.
+        Convert Pandas DataFrame to HuggingFace Dataset format.
 
         Args:
             train_split: If provided, split the data into train/test sets.
@@ -53,10 +100,9 @@ class DatasetConverter:
             or {'train': Dataset} if no split.
         """
         # Prepare data
-        texts = self.df["Transcription"].to_list()
+        texts = self.df[self.text_col].tolist()
         labels = self._create_labels()
-        # Add original indices to the dataset
-        original_indices = pl.arange(0, len(self.df), eager=True).to_list()
+        original_indices = self.df.index.tolist()
 
         # Create dataset dictionary
         dataset_dict = {"text": texts, "label": labels, "index": original_indices}
@@ -74,6 +120,10 @@ class DatasetConverter:
             return {"train": split_dataset["train"], "test": split_dataset["test"]}
 
         return {"train": dataset}
+
+    def _create_labels(self) -> list:
+        """Create binary labels based on label column."""
+        return [0 if dc == "No" else 1 for dc in self.df[self.label_col]]
 
 
 class DatasetAnonymizer:
