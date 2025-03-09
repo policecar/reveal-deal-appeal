@@ -34,7 +34,7 @@ from sklearn.metrics import classification_report
 
 from config import Config
 from clf import BottleneckClassifier
-from data import DatasetConverter, DatasetAnonymizer
+from dataset import DatasetConverter, DatasetAnonymizer
 from plot import plot_embeddings_umap
 # from utils import estimate_tokens
 

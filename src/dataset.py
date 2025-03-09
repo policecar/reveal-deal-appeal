@@ -6,13 +6,13 @@ from presidio_analyzer import AnalyzerEngine
 from presidio_anonymizer import AnonymizerEngine
 from presidio_anonymizer.entities import OperatorConfig
 
-from config import Config
+from config import DataConfig
 from datasets import Dataset, DatasetDict, ClassLabel
 from typing import Dict, Optional
 
 
 class DatasetConverter:
-    def __init__(self, config: Config):
+    def __init__(self, config: DataConfig):
         """Initialize from an excel file containing transcripts of sales calls."""
         self.seed = config.seed
         self.text_col = config.excel_text_col
