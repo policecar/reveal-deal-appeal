@@ -15,11 +15,11 @@ training:
 
 data:
   file_path: "data/transcripts.xlsx"
-  excel_sheet_name: "Sales calls"
+  excel_sheet_name: "discovery calls"
   excel_text_col: "Transcription"
-  excel_label_col: "Win /No-Win"
+  excel_label_col: "Win/ No Win"
   train_split: 0.8
-  seed: 153
+  seed: 1537
   shuffle: true
   embeddings_path: "data/embeddings"
   finetune_dataset: "craig/prosus-converted"  # Sales calls dataset
