@@ -60,6 +60,14 @@ def build_model(
     model_body = SentenceTransformer(config.model.name)
     model_body.max_seq_length = config.model.max_length
 
+    # Trade ~30% compute for an order of magnitude less activation memory.
+    # Without this, contrastive training at 1024 tokens overruns 24GB unified
+    # memory and MPS swap-thrashes (~280s/step instead of seconds).
+    if config.model.gradient_checkpointing:
+        model_body[0].auto_model.gradient_checkpointing_enable(
+            gradient_checkpointing_kwargs={"use_reentrant": False}
+        )
+
     # in_features must be explicit: SetFitHead.__init__ xavier-initializes
     # every nn.Linear, and the LazyLinear used when in_features=None is an
     # nn.Linear subclass whose uninitialized weight crashes that init.
@@ -76,9 +84,9 @@ def build_model(
     )
 
 
-def build_training_args(seed: int) -> TrainingArguments:
+def build_training_args(config: Config, seed: int) -> TrainingArguments:
     return TrainingArguments(
-        batch_size=8,  # (16, 2)
+        batch_size=config.model.batch_size,  # pairs per step; 2 sequences each
         # num_epochs=3,  # (1, 16)
         max_steps=100,
         # end_to_end=False,  # freeze body, train head
@@ -145,7 +153,7 @@ if __name__ == "__main__":
 
         # TRAINING
 
-        args = build_training_args(seed=config.data.seed)
+        args = build_training_args(config, seed=config.data.seed)
         trainer = Trainer(
             model=model,
             args=args,

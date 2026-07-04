@@ -11,6 +11,7 @@ class ModelConfig:
     batch_size: int
     freeze_embeddings: bool
     bottleneck_dim: int
+    gradient_checkpointing: bool
 
 
 @dataclass

@@ -1,7 +1,12 @@
 model:
   name: "answerdotai/ModernBERT-base"
-  max_length: 2048  # ModernBERT supports up to 8192; longer = more memory per pair
-  batch_size: 8
+  # Memory knobs, tuned for 24GB MPS: raise max_length/batch_size on bigger
+  # hardware (ModernBERT supports up to 8192 tokens). gradient_checkpointing
+  # trades ~30% compute for ~10x less activation memory; disable on GPUs with
+  # plenty of VRAM for faster steps.
+  max_length: 1024
+  batch_size: 4  # contrastive pairs per step (2 sequences each)
+  gradient_checkpointing: true
   freeze_embeddings: true
   bottleneck_dim: 128
 

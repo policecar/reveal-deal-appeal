@@ -51,7 +51,7 @@ def cross_validate(config: Config, data, n_splits: int = N_SPLITS) -> list[dict]
         model = build_model(config, device, num_classes=num_classes)
         trainer = Trainer(
             model=model,
-            args=build_training_args(seed=config.data.seed + fold),
+            args=build_training_args(config, seed=config.data.seed + fold),
             train_dataset=train_data,
         )
         trainer.train()
