@@ -1,15 +1,10 @@
 """Regenerate data/mauzo — mirrors refine.py's preprocess_data=True path.
 
-Run from the repo root: .venv python tmp/preprocess.py
+Run from the repo root: python src/preprocess.py
 """
 
-import sys
-from pathlib import Path
-
-sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
-
-from config import Config  # noqa: E402
-from dataset import DatasetConverter, DatasetAnonymizer  # noqa: E402
+from config import Config
+from dataset import DatasetConverter, DatasetAnonymizer
 
 config = Config.from_yaml("src/config.yaml")
 

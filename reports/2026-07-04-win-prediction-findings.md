@@ -158,7 +158,7 @@ string as a win (normalize + raise).
 git checkout claude/code-improvement-discussion-4qsm1o
 uv venv --python 3.11 && uv pip install -r requirements.txt
 uv pip install "en_core_web_lg @ https://github.com/explosion/spacy-models/releases/download/en_core_web_lg-3.8.0/en_core_web_lg-3.8.0-py3-none-any.whl"
-python tmp/preprocess.py                 # xlsx -> data/mauzo (Presidio, ~3 min)
+python src/preprocess.py                 # xlsx -> data/mauzo (Presidio, ~3 min)
 python src/crossval.py --baselines-only  # models 3-6, ~20 min CPU/MPS
 python src/crossval.py                   # + SetFit CV, ~80 min on 24GB MPS
 ```
