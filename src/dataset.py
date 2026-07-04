@@ -1,5 +1,4 @@
 import multiprocessing
-import numpy as np
 import pandas as pd
 
 from presidio_analyzer import AnalyzerEngine
@@ -28,7 +27,7 @@ class DatasetConverter:
         original_indices = set(self.df.index)
         dates_dict = self.df["Date"].to_dict()
 
-        (self._apply_basic_filters()._filter_length_outliers())
+        (self._apply_basic_filters()._filter_short_transcripts())
 
         # Print skipped indices using stored dates
         skipped_indices = list(original_indices - set(self.df.index))
@@ -57,37 +56,22 @@ class DatasetConverter:
         ].copy()
         return self
 
-    def _filter_length_outliers(self, z_threshold: float = 2.0) -> "DatasetConverter":
+    def _filter_short_transcripts(self, min_words: int = 750) -> "DatasetConverter":
         """
-        Filter outliers that deviate by more than two standard deviations
-        regarding their number of characters or tokens.
+        Drop rows whose transcript is shorter than min_words (~5 minutes of
+        speech at ~150 wpm). This catches both fragments (recording stopped
+        after a minute) and failed transcriptions (a 12-minute call with 12
+        words of ASR garbage), which the Length column cannot distinguish.
+        Replaces a z-score outlier filter that only ever fired on the short
+        end anyway and silently discarded rows relative to corpus statistics.
         """
-        # Add character and token count columns
-        self.df["char_count"] = self.df[self.text_col].str.len()
-        self.df["token_count"] = self.df[self.text_col].str.split().str.len()
-
-        # Calculate z-scores
-        char_zscore = np.abs(
-            (self.df["char_count"] - self.df["char_count"].mean())
-            / self.df["char_count"].std()
-        )
-        token_zscore = np.abs(
-            (self.df["token_count"] - self.df["token_count"].mean())
-            / self.df["token_count"].std()
-        )
-
+        word_count = self.df[self.text_col].str.split().str.len()
         print(
-            f"\nCharacter count mean: {self.df['char_count'].mean():.1f}, std: {self.df['char_count'].std():.1f}"
+            f"\nWord count: mean {word_count.mean():.0f}, "
+            f"median {word_count.median():.0f}; "
+            f"dropping {(word_count < min_words).sum()} rows under {min_words} words"
         )
-        print(
-            f"Token count mean: {self.df['token_count'].mean():.1f}, std: {self.df['token_count'].std():.1f}"
-        )
-
-        # Apply filters
-        self.df = self.df[
-            (char_zscore <= z_threshold) & (token_zscore <= z_threshold)
-        ].drop(columns=["char_count", "token_count"])
-
+        self.df = self.df[word_count >= min_words]
         return self
 
     def to_dataset(

@@ -16,9 +16,8 @@ SHEET = "discovery calls"
 def make_df(labels: list, texts: list | None = None) -> pd.DataFrame:
     n = len(labels)
     if texts is None:
-        # Varied lengths: identical lengths make the char/token std zero and
-        # the outlier z-score filter degenerate (NaN drops every row).
-        texts = [f"call transcript {i} " + "blah " * (10 + i) for i in range(n)]
+        # Long enough to pass the min-word transcript filter (750 words)
+        texts = [f"call transcript {i} " + "blah " * (800 + i) for i in range(n)]
     return pd.DataFrame(
         {
             "Date": pd.to_datetime(["2025-01-01"] * n),
@@ -81,3 +80,17 @@ def test_original_index_survives_filtering(tmp_path):
 
     assert ds["index"] == [0, 2, 3, 4, 5]
     assert ds["label"] == [0, 0, 0, 1, 0]
+
+
+def test_short_transcripts_dropped(tmp_path):
+    """Transcripts under the ~5-minute word floor are filtered out."""
+    labels = ["No", "Win", "No", "No"]
+    df = make_df(labels)
+    df.loc[1, TEXT_COL] = "let us switch to zoom instead " * 20  # 120 words: stub
+    df.loc[2, TEXT_COL] = "it it it " * 4  # 12 words: ASR garbage
+
+    converter = DatasetConverter(make_config(tmp_path, df))
+    ds = converter.to_dataset()["train"]
+
+    assert ds["index"] == [0, 3]
+    assert ds["label"] == [0, 0]
