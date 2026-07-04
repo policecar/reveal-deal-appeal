@@ -1,7 +1,15 @@
 model:
   name: "answerdotai/ModernBERT-base"
-  max_length: 512
-  batch_size: 8
+  # Memory knobs, tuned for 24GB MPS: raise max_length/batch_size on bigger
+  # hardware (ModernBERT supports up to 8192 tokens). gradient_checkpointing
+  # trades ~30% compute for ~10x less activation memory; disable on GPUs with
+  # plenty of VRAM for faster steps.
+  max_length: 1024
+  batch_size: 4  # contrastive pairs per step (2 sequences each)
+  gradient_checkpointing: true
+  # Head loss for imbalance: null = class-weighted cross-entropy,
+  # a float (e.g. 2.0) = focal loss with that gamma (also class-weighted)
+  focal_gamma: null
   freeze_embeddings: true
   bottleneck_dim: 128
 
@@ -15,11 +23,11 @@ training:
 
 data:
   file_path: "data/transcripts.xlsx"
-  excel_sheet_name: "Sales calls"
+  excel_sheet_name: "discovery calls"
   excel_text_col: "Transcription"
-  excel_label_col: "Win /No-Win"
+  excel_label_col: "Win/ No Win"
   train_split: 0.8
-  seed: 153
+  seed: 1537
   shuffle: true
   embeddings_path: "data/embeddings"
   finetune_dataset: "craig/prosus-converted"  # Sales calls dataset

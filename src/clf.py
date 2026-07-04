@@ -1,7 +1,24 @@
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 
 from setfit import SetFitHead
+
+
+class FocalLoss(nn.Module):
+    """Multiclass focal loss: cross-entropy scaled by (1 - pt)^gamma, so
+    well-classified (easy, majority) examples contribute little and training
+    focuses on the hard minority. Optionally combined with class weights."""
+
+    def __init__(self, gamma: float = 2.0, weight: torch.Tensor | None = None):
+        super().__init__()
+        self.gamma = gamma
+        self.weight = weight
+
+    def forward(self, logits: torch.Tensor, targets: torch.Tensor) -> torch.Tensor:
+        ce = F.cross_entropy(logits, targets, weight=self.weight, reduction="none")
+        pt = torch.exp(-ce)
+        return ((1 - pt) ** self.gamma * ce).mean()
 
 
 class BottleneckClassifier(SetFitHead):
@@ -11,9 +28,14 @@ class BottleneckClassifier(SetFitHead):
         bottleneck_dim=128,
         out_features=2,
         dropout_rate=0.2,
+        class_weights: torch.Tensor | None = None,
+        focal_gamma: float | None = None,
         **kwargs,
     ):
         super().__init__(in_features=in_features, out_features=out_features, **kwargs)
+
+        self.class_weights = class_weights
+        self.focal_gamma = focal_gamma
 
         self.bottleneck = nn.Sequential(
             nn.LazyLinear(bottleneck_dim)
@@ -47,4 +69,11 @@ class BottleneckClassifier(SetFitHead):
         return torch.argmax(probs, dim=-1)
 
     def get_loss_fn(self) -> nn.Module:
-        return nn.CrossEntropyLoss()
+        weight = (
+            self.class_weights.to(self.device)
+            if self.class_weights is not None
+            else None
+        )
+        if self.focal_gamma is not None:
+            return FocalLoss(gamma=self.focal_gamma, weight=weight)
+        return nn.CrossEntropyLoss(weight=weight)

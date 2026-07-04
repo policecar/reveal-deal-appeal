@@ -39,21 +39,87 @@ from plot import plot_embeddings_umap
 # from utils import estimate_tokens
 
 
-if __name__ == "__main__":
-    preprocess_data = False
-    train = True
-
-    config = Config.from_yaml("src/config.yaml")
-    model_name = "sentence-transformers/all-mpnet-base-v2"
-    # model_name = "BAAI/bge-small-en-v1.5"
-
-    device = torch.device(
+def get_device() -> torch.device:
+    return torch.device(
         "cuda"
         if torch.cuda.is_available()
         else "mps"
         if torch.backends.mps.is_available()
         else "cpu"
     )
+
+
+def balanced_class_weights(labels, num_classes: int) -> torch.Tensor:
+    """sklearn-style 'balanced' weights: n_samples / (n_classes * count_c),
+    so each class contributes equally to the head loss regardless of size."""
+    counts = np.bincount(labels, minlength=num_classes)
+    return torch.tensor(len(labels) / (num_classes * counts), dtype=torch.float32)
+
+
+def build_model(
+    config: Config,
+    device: torch.device,
+    num_classes: int = 2,
+    class_weights: torch.Tensor | None = None,
+) -> SetFitModel:
+    """
+    Build a SetFit model from the config: a sentence transformer body
+    (plain encoders like ModernBERT get mean pooling added automatically)
+    with a bottleneck classification head.
+    """
+    model_body = SentenceTransformer(config.model.name)
+    model_body.max_seq_length = config.model.max_length
+
+    # Trade ~30% compute for an order of magnitude less activation memory.
+    # Without this, contrastive training at 1024 tokens overruns 24GB unified
+    # memory and MPS swap-thrashes (~280s/step instead of seconds).
+    if config.model.gradient_checkpointing:
+        model_body[0].auto_model.gradient_checkpointing_enable(
+            gradient_checkpointing_kwargs={"use_reentrant": False}
+        )
+
+    # in_features must be explicit: SetFitHead.__init__ xavier-initializes
+    # every nn.Linear, and the LazyLinear used when in_features=None is an
+    # nn.Linear subclass whose uninitialized weight crashes that init.
+    clf = BottleneckClassifier(
+        in_features=model_body.get_sentence_embedding_dimension(),
+        bottleneck_dim=config.model.bottleneck_dim,
+        out_features=num_classes,
+        class_weights=class_weights,
+        focal_gamma=config.model.focal_gamma,
+        device=device,
+    )
+    return SetFitModel(
+        model_body=model_body,
+        model_head=clf,
+        use_differentiable_head=True,
+    )
+
+
+def build_training_args(config: Config, seed: int) -> TrainingArguments:
+    return TrainingArguments(
+        batch_size=config.model.batch_size,  # pairs per step; 2 sequences each
+        # num_epochs=3,  # (1, 16)
+        max_steps=100,
+        # end_to_end=False,  # freeze body, train head
+        l2_weight=0.1,  # 0.01
+        # oversampling repeats minority pairs instead of discarding majority
+        # ones; with ~6 win examples per fold, undersampling starves training
+        sampling_strategy="oversampling",
+        num_iterations=2,
+        loss=CosineSimilarityLoss,  # default, consider FocalLoss
+        seed=seed,
+    )
+
+
+if __name__ == "__main__":
+    preprocess_data = False
+    train = True
+
+    config = Config.from_yaml("src/config.yaml")
+    model_name = config.model.name
+
+    device = get_device()
 
     script_dir = Path(__file__).parent.absolute()
     ckpt_dir = script_dir.parent / "checkpoints"
@@ -95,29 +161,17 @@ if __name__ == "__main__":
         #     # solver="liblinear",
         # )
 
-        clf = BottleneckClassifier(
-            bottleneck_dim=config.model.bottleneck_dim,
-            out_features=len(train_data["label"]),
-            device=device,
-        )
-        model = SetFitModel(
-            model_body=SentenceTransformer(model_name),
-            model_head=clf,
-            use_differentiable_head=True,
+        num_classes = train_data.features["label"].num_classes
+        model = build_model(
+            config,
+            device,
+            num_classes=num_classes,
+            class_weights=balanced_class_weights(train_data["label"], num_classes),
         )
 
         # TRAINING
 
-        args = TrainingArguments(
-            batch_size=8,  # (16, 2)
-            # num_epochs=3,  # (1, 16)
-            max_steps=100,
-            # end_to_end=False,  # freeze body, train head
-            l2_weight=0.1,  # 0.01
-            sampling_strategy="undersampling",
-            num_iterations=2,
-            loss=CosineSimilarityLoss,  # default, consider FocalLoss
-        )
+        args = build_training_args(config, seed=config.data.seed)
         trainer = Trainer(
             model=model,
             args=args,
@@ -145,8 +199,9 @@ if __name__ == "__main__":
 
     y_pred = model.predict(test_data["text"]).cpu().numpy()
 
+    # label 0 = no-win, 1 = win (see DatasetConverter._create_labels)
     performance = classification_report(
-        test_labels, y_pred, target_names=["Win", "No-Win"], digits=3
+        test_labels, y_pred, target_names=["No-Win", "Win"], digits=3
     )
     print(f"\n{performance}")
 

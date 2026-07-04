@@ -11,6 +11,9 @@ class ModelConfig:
     batch_size: int
     freeze_embeddings: bool
     bottleneck_dim: int
+    gradient_checkpointing: bool
+    # None -> class-weighted cross-entropy; a float (e.g. 2.0) -> focal loss
+    focal_gamma: Optional[float]
 
 
 @dataclass
