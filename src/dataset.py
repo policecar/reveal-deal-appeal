@@ -3,6 +3,7 @@ import numpy as np
 import pandas as pd
 
 from presidio_analyzer import AnalyzerEngine
+from presidio_analyzer.nlp_engine import NerModelConfiguration, SpacyNlpEngine
 from presidio_anonymizer import AnonymizerEngine
 from presidio_anonymizer.entities import OperatorConfig
 
@@ -137,7 +138,20 @@ class DatasetConverter:
 
 class DatasetAnonymizer:
     def __init__(self):
-        self.analyzer = AnalyzerEngine()
+        # Presidio's default config ignores ORG/ORGANIZATION as too noisy, so
+        # requesting ORGANIZATION below silently matched nothing and org names
+        # leaked through. Un-ignore them: for anonymizing sales transcripts,
+        # the odd false positive beats leaking customer identity.
+        ner_config = NerModelConfiguration()
+        ner_config.labels_to_ignore = ner_config.labels_to_ignore - {
+            "ORG",
+            "ORGANIZATION",
+        }
+        nlp_engine = SpacyNlpEngine(
+            models=[{"lang_code": "en", "model_name": "en_core_web_lg"}],
+            ner_model_configuration=ner_config,
+        )
+        self.analyzer = AnalyzerEngine(nlp_engine=nlp_engine)
         self.anonymizer = AnonymizerEngine()
 
     def _clean_text(self, text: str) -> str:
