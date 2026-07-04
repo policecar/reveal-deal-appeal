@@ -1,6 +1,6 @@
 model:
   name: "answerdotai/ModernBERT-base"
-  max_length: 512
+  max_length: 2048  # ModernBERT supports up to 8192; longer = more memory per pair
   batch_size: 8
   freeze_embeddings: true
   bottleneck_dim: 128

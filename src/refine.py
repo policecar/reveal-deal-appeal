@@ -39,21 +39,59 @@ from plot import plot_embeddings_umap
 # from utils import estimate_tokens
 
 
-if __name__ == "__main__":
-    preprocess_data = False
-    train = True
-
-    config = Config.from_yaml("src/config.yaml")
-    model_name = "sentence-transformers/all-mpnet-base-v2"
-    # model_name = "BAAI/bge-small-en-v1.5"
-
-    device = torch.device(
+def get_device() -> torch.device:
+    return torch.device(
         "cuda"
         if torch.cuda.is_available()
         else "mps"
         if torch.backends.mps.is_available()
         else "cpu"
     )
+
+
+def build_model(config: Config, device: torch.device, num_classes: int = 2) -> SetFitModel:
+    """
+    Build a SetFit model from the config: a sentence transformer body
+    (plain encoders like ModernBERT get mean pooling added automatically)
+    with a bottleneck classification head.
+    """
+    model_body = SentenceTransformer(config.model.name)
+    model_body.max_seq_length = config.model.max_length
+
+    clf = BottleneckClassifier(
+        bottleneck_dim=config.model.bottleneck_dim,
+        out_features=num_classes,
+        device=device,
+    )
+    return SetFitModel(
+        model_body=model_body,
+        model_head=clf,
+        use_differentiable_head=True,
+    )
+
+
+def build_training_args(seed: int) -> TrainingArguments:
+    return TrainingArguments(
+        batch_size=8,  # (16, 2)
+        # num_epochs=3,  # (1, 16)
+        max_steps=100,
+        # end_to_end=False,  # freeze body, train head
+        l2_weight=0.1,  # 0.01
+        sampling_strategy="undersampling",
+        num_iterations=2,
+        loss=CosineSimilarityLoss,  # default, consider FocalLoss
+        seed=seed,
+    )
+
+
+if __name__ == "__main__":
+    preprocess_data = False
+    train = True
+
+    config = Config.from_yaml("src/config.yaml")
+    model_name = config.model.name
+
+    device = get_device()
 
     script_dir = Path(__file__).parent.absolute()
     ckpt_dir = script_dir.parent / "checkpoints"
@@ -95,29 +133,13 @@ if __name__ == "__main__":
         #     # solver="liblinear",
         # )
 
-        clf = BottleneckClassifier(
-            bottleneck_dim=config.model.bottleneck_dim,
-            out_features=len(train_data["label"]),
-            device=device,
-        )
-        model = SetFitModel(
-            model_body=SentenceTransformer(model_name),
-            model_head=clf,
-            use_differentiable_head=True,
+        model = build_model(
+            config, device, num_classes=train_data.features["label"].num_classes
         )
 
         # TRAINING
 
-        args = TrainingArguments(
-            batch_size=8,  # (16, 2)
-            # num_epochs=3,  # (1, 16)
-            max_steps=100,
-            # end_to_end=False,  # freeze body, train head
-            l2_weight=0.1,  # 0.01
-            sampling_strategy="undersampling",
-            num_iterations=2,
-            loss=CosineSimilarityLoss,  # default, consider FocalLoss
-        )
+        args = build_training_args(seed=config.data.seed)
         trainer = Trainer(
             model=model,
             args=args,
@@ -145,8 +167,9 @@ if __name__ == "__main__":
 
     y_pred = model.predict(test_data["text"]).cpu().numpy()
 
+    # label 0 = no-win, 1 = win (see DatasetConverter._create_labels)
     performance = classification_report(
-        test_labels, y_pred, target_names=["Win", "No-Win"], digits=3
+        test_labels, y_pred, target_names=["No-Win", "Win"], digits=3
     )
     print(f"\n{performance}")
 
