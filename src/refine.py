@@ -49,7 +49,9 @@ def get_device() -> torch.device:
     )
 
 
-def build_model(config: Config, device: torch.device, num_classes: int = 2) -> SetFitModel:
+def build_model(
+    config: Config, device: torch.device, num_classes: int = 2
+) -> SetFitModel:
     """
     Build a SetFit model from the config: a sentence transformer body
     (plain encoders like ModernBERT get mean pooling added automatically)
@@ -58,7 +60,11 @@ def build_model(config: Config, device: torch.device, num_classes: int = 2) -> S
     model_body = SentenceTransformer(config.model.name)
     model_body.max_seq_length = config.model.max_length
 
+    # in_features must be explicit: SetFitHead.__init__ xavier-initializes
+    # every nn.Linear, and the LazyLinear used when in_features=None is an
+    # nn.Linear subclass whose uninitialized weight crashes that init.
     clf = BottleneckClassifier(
+        in_features=model_body.get_sentence_embedding_dimension(),
         bottleneck_dim=config.model.bottleneck_dim,
         out_features=num_classes,
         device=device,
