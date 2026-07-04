@@ -49,8 +49,18 @@ def get_device() -> torch.device:
     )
 
 
+def balanced_class_weights(labels, num_classes: int) -> torch.Tensor:
+    """sklearn-style 'balanced' weights: n_samples / (n_classes * count_c),
+    so each class contributes equally to the head loss regardless of size."""
+    counts = np.bincount(labels, minlength=num_classes)
+    return torch.tensor(len(labels) / (num_classes * counts), dtype=torch.float32)
+
+
 def build_model(
-    config: Config, device: torch.device, num_classes: int = 2
+    config: Config,
+    device: torch.device,
+    num_classes: int = 2,
+    class_weights: torch.Tensor | None = None,
 ) -> SetFitModel:
     """
     Build a SetFit model from the config: a sentence transformer body
@@ -75,6 +85,8 @@ def build_model(
         in_features=model_body.get_sentence_embedding_dimension(),
         bottleneck_dim=config.model.bottleneck_dim,
         out_features=num_classes,
+        class_weights=class_weights,
+        focal_gamma=config.model.focal_gamma,
         device=device,
     )
     return SetFitModel(
@@ -91,7 +103,9 @@ def build_training_args(config: Config, seed: int) -> TrainingArguments:
         max_steps=100,
         # end_to_end=False,  # freeze body, train head
         l2_weight=0.1,  # 0.01
-        sampling_strategy="undersampling",
+        # oversampling repeats minority pairs instead of discarding majority
+        # ones; with ~6 win examples per fold, undersampling starves training
+        sampling_strategy="oversampling",
         num_iterations=2,
         loss=CosineSimilarityLoss,  # default, consider FocalLoss
         seed=seed,
@@ -147,8 +161,12 @@ if __name__ == "__main__":
         #     # solver="liblinear",
         # )
 
+        num_classes = train_data.features["label"].num_classes
         model = build_model(
-            config, device, num_classes=train_data.features["label"].num_classes
+            config,
+            device,
+            num_classes=num_classes,
+            class_weights=balanced_class_weights(train_data["label"], num_classes),
         )
 
         # TRAINING

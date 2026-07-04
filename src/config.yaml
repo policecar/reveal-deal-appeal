@@ -7,6 +7,9 @@ model:
   max_length: 1024
   batch_size: 4  # contrastive pairs per step (2 sequences each)
   gradient_checkpointing: true
+  # Head loss for imbalance: null = class-weighted cross-entropy,
+  # a float (e.g. 2.0) = focal loss with that gamma (also class-weighted)
+  focal_gamma: null
   freeze_embeddings: true
   bottleneck_dim: 128
 

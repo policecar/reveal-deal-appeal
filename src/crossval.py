@@ -26,7 +26,7 @@ from sklearn.metrics import classification_report, f1_score, fbeta_score
 from sklearn.model_selection import StratifiedKFold
 
 from config import Config
-from refine import build_model, build_training_args, get_device
+from refine import balanced_class_weights, build_model, build_training_args, get_device
 
 N_SPLITS = 5
 
@@ -48,7 +48,12 @@ def cross_validate(config: Config, data, n_splits: int = N_SPLITS) -> list[dict]
         train_data = data.select(train_idx)
         test_data = data.select(test_idx)
 
-        model = build_model(config, device, num_classes=num_classes)
+        model = build_model(
+            config,
+            device,
+            num_classes=num_classes,
+            class_weights=balanced_class_weights(train_data["label"], num_classes),
+        )
         trainer = Trainer(
             model=model,
             args=build_training_args(config, seed=config.data.seed + fold),
