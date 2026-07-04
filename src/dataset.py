@@ -106,7 +106,7 @@ class DatasetConverter:
         # Prepare data
         texts = self.df[self.text_col].tolist()
         labels = self._create_labels()
-        original_indices = self.df.index.tolist()
+        original_indices = self.df["original_index"].tolist()
 
         # Create dataset dictionary
         dataset_dict = {"text": texts, "label": labels, "index": original_indices}
@@ -114,9 +114,9 @@ class DatasetConverter:
         # Convert to HuggingFace Dataset
         dataset = Dataset.from_dict(dataset_dict)
 
-        dataset = dataset.cast_column(
-            "label", ClassLabel(names=[str(label) for label in dataset.unique("label")])
-        )
+        # 0 = no-win, 1 = win (see _create_labels); fixed order so the
+        # name-to-int mapping doesn't depend on which label appears first
+        dataset = dataset.cast_column("label", ClassLabel(names=["no-win", "win"]))
 
         if train_split is not None:
             # Split into train/test
